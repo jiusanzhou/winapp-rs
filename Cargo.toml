@@ -1,0 +1,16 @@
+[package]
+name = "winapp-rs"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+windows = "0.21.1"
+reqwest = { version = "0.11.6", features = ["blocking"] }
+bindings = { path = "bindings" }
+web-view = "0.7"
+
+[build-dependencies]
+windows = "0.21.1"
+
