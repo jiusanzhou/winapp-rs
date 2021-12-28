@@ -33,6 +33,22 @@ impl Rect {
         self.width += border.0 * 2;
         self.height += border.1;
     }
+
+    pub fn left_top(&self) -> (i32, i32) {
+        (self.x, self.y)
+    }
+
+    pub fn right_top(&self) -> (i32, i32) {
+        (self.x + self.width, self.y)
+    }
+
+    pub fn right_bottom(&self) -> (i32, i32) {
+        (self.x + self.width, self.y + self.height)
+    }
+
+    pub fn left_bottom(&self) -> (i32, i32) {
+        (self.x, self.y + self.height)
+    }
 }
 
 impl Display for Rect {

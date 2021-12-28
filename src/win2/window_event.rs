@@ -348,20 +348,24 @@ mod tests {
     fn test_init_hook() {
         assert_eq!(1, 1);
 
-        // let _ = Window::from_name(None, "微信").unwrap()
-        let _ = Window::default()
+        let child = Window::from_name(None, "MINGW64:/d/Zoe").unwrap();
+        let _ = Window::from_name(None, "MINGW64:/c/Users/Zoe").unwrap()
+        // let _ = Window::default() // for all windows
             .listen()
-            .on(WinEventType::Show, |evt: &WinEvent| {
-                println!("===> object show {}!", evt.window);
+            .on(WinEventType::MoveResizeStart, |evt: &WinEvent| {
+                println!("===> object move start {}!", evt.window);
             })
-            .on(WinEventType::Hide, |evt: &WinEvent| {
-                println!("===> object hide {}!", evt.window);
-            })
-            .on(WinEventType::All, |evt: &WinEvent| {
-                println!("======> object event all {:?} {}!", evt.etype, evt.window);
+            .on(WinEventType::MoveResizeEnd, move |evt: &WinEvent| {
+                println!("===> object move end {}!", evt.window);
+                // get the position and set to the child one
+                if let Ok(rect) = evt.window.rect() {
+                    child.set_pos(rect.right_top())
+                }
             })
             .start(true);
 
         // listen all windows
+
+        // clean all hooks
     }
 }

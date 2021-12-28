@@ -520,7 +520,7 @@ mod tests {
 
     #[test]
     fn test_window_setowner() {
-        Window::from_name(None, "About NeatDownloadManager").unwrap()
+        Window::from_name(None, "MINGW64:/d/Zoe").unwrap()
             .set_owner(
                 Window::from_name(
                     None,
