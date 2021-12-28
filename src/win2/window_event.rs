@@ -1,19 +1,21 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicIsize, Ordering, AtomicBool};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use lazy_static::lazy_static;
 
 use bindings::Windows::Win32::Foundation::HWND;
-use bindings::Windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook};
+use bindings::Windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use bindings::Windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW,
     PM_REMOVE,
     EVENT_MAX, EVENT_MIN, EVENT_OBJECT_CLOAKED, EVENT_OBJECT_DESTROY, EVENT_OBJECT_FOCUS, EVENT_OBJECT_HIDE, EVENT_OBJECT_SHOW, EVENT_OBJECT_UNCLOAKED, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
     MSG, PeekMessageW, TranslateMessage};
+
+use crate::win2::message_loop::MessageLoop;
 
 use super::error::Result;
 use super::window::Window;
@@ -64,7 +66,11 @@ impl Window {
 
 pub struct WinEventListener {
     w: Window,
-    hook: AtomicIsize,
+
+    hook: AtomicIsize, // sotre the handle id
+    exited: Arc<AtomicBool>, // exit the thead
+
+
     ch: Arc<Mutex<(Sender<WinEvent>, Receiver<WinEvent>)>>,
 
     // filter functions: all should be true
@@ -72,6 +78,8 @@ pub struct WinEventListener {
     // handle functions,
     handlers: Arc<Mutex<HashMap<WinEventType, Vec<Box<dyn EventHandler + Send + Sync + 'static>>>>>,
     // handlers: Arc<Mutex<HashMap<WinEventType, Box<dyn EventHandler + Send + Sync + 'static>>>>,
+
+    thread: Option<JoinHandle<()>>, // thread for handle message
 }
 
 // pub struct ListenerWrapper(Arc<Mutex<WinEventListener>>);
@@ -79,16 +87,19 @@ pub struct WinEventListener {
 impl WinEventListener {
 
     pub fn new(w: Window) -> Self {
-        let x = WinEventListener{
+        WinEventListener{
             w,
+
             hook: AtomicIsize::new(0),
+            exited: Arc::new(AtomicBool::new(false)),
+
             ch: Arc::new(Mutex::new(unbounded())),
 
             // filters: Arc::new(Mutex::new(Vec::<_>::new())),
             handlers: Arc::new(Mutex::new(HashMap::new())),
-        };
 
-        x
+            thread: None,
+        }
     }
 
     // on method to add event listener, evt type -> callback
@@ -100,8 +111,6 @@ impl WinEventListener {
         self.handlers.lock().unwrap().entry(typ)
             .or_insert_with(Vec::new)
             .push(Box::new(cb));
-        // self.handlers.lock().unwrap()
-        //     .insert(typ, Box::new(cb));
 
         self
     }
@@ -133,98 +142,81 @@ impl WinEventListener {
 
         let ch = self.ch.clone();
         let _handlers = self.handlers.clone();
+        let _exited = self.exited.clone();
         // let _filters = self.filters.clone();
         let target_w = self.w;
 
-        let cb = move || {
-            // start the messsage loop
-            MessageLoop::start(10, |_msg| {
+        let process = move || {
+            if let Ok(evt) = ch.lock().unwrap().1.try_recv() {
+                // filter and call with event type
+                // for f in _filters.lock().unwrap().into_iter() {
+                //     if !f(&evt) {
+                //         // if with false just ingore
+                //         return true;
+                //     }
+                // }
 
-                if let Ok(evt) = ch.lock().unwrap().1.try_recv() {
-                    // filter and call with event type
-                    // for f in _filters.lock().unwrap().into_iter() {
-                    //     if !f(&evt) {
-                    //         // if with false just ingore
-                    //         return true;
-                    //     }
-                    // }
-
-                    // hard code for window match
-                    if target_w.is_valide() && evt.window != target_w {
-                        return true;
-                    }
-
-                    // call functions with type
-                    match _handlers.lock().unwrap().get_mut(&evt.etype) {
-                        Some(v) => {
-                            for cb in v.into_iter() {
-                                cb.handle(&evt);
-                            }
-                        },
-                        None => {},
-                    }
-
-                    // call functions all
-                    match _handlers.lock().unwrap().get_mut(&WinEventType::All) {
-                        Some(v) => {
-                            for cb in v.into_iter() {
-                                cb.handle(&evt);
-                            }
-                        },
-                        None => {},
-                    }
-
+                // hard code for window match
+                if target_w.is_valide() && evt.window != target_w {
+                    // return true;
+                    return;
                 }
 
-                // return true for continue the loop
-                true
-            });
+                // call functions with type
+                match _handlers.lock().unwrap().get_mut(&evt.etype) {
+                    Some(v) => {
+                        for cb in v.into_iter() {
+                            cb.handle(&evt);
+                        }
+                    },
+                    None => {},
+                }
+
+                // call functions all
+                match _handlers.lock().unwrap().get_mut(&WinEventType::All) {
+                    Some(v) => {
+                        for cb in v.into_iter() {
+                            cb.handle(&evt);
+                        }
+                    },
+                    None => {},
+                }
+
+            }
+
         };
 
         if block {
-            cb();
+            // start the message loop
+            MessageLoop::start(10, |_msg| {
+                process();
+
+                true
+            });
         } else {
-            thread::spawn(cb);
+            // store the thread handle
+            self.thread = Some(thread::spawn(move || {
+                while !_exited.load(Ordering::SeqCst) {
+                    process();
+                }
+            }));
         }
 
         Ok(())
     }
 }
 
-// message loop
-#[derive(Debug, Copy, Clone)]
-pub struct MessageLoop;
-
-impl MessageLoop {
-    pub fn start(sleep: u64, cb: impl Fn(Option<MSG>) -> bool) {
-        Self::start_with_sleep(sleep, cb);
-    }
-
-    pub fn start_with_sleep(sleep: u64, cb: impl Fn(Option<MSG>) -> bool) {
-        let mut msg: MSG = MSG::default();
-        loop {
-            let mut value: Option<MSG> = None;
-            unsafe {
-                if !bool::from(!PeekMessageW(
-                    &mut msg, 
-                    HWND(0),
-                    0, 
-                    0, 
-                    PM_REMOVE,
-                )) {
-                    TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
-
-                    value = Some(msg);
-                }
-            }
-
-            thread::sleep(Duration::from_millis(sleep));
-
-            if !cb(value) {
-                break;
-            }
+impl Drop for WinEventListener {
+    fn drop(&mut self) {
+        // unhook the window
+        let hid = self.hook.load(Ordering::SeqCst);
+        unsafe {
+            UnhookWinEvent(HWINEVENTHOOK(hid));
         }
+        println!("remove the hook {}", hid);
+
+        // exit thread
+        self.exited.store(true, Ordering::SeqCst);
     }
 }
 
@@ -266,14 +258,6 @@ unsafe extern "system" fn thunk(
             .expect("could not send message event channel");
         }
     }
-
-    // println!("====> {:?}", hook_handle);
-
-    // WINDOWS_EVENT_CHANNEL
-    //     .lock().unwrap()
-    //     .0
-    //     .send(evt)
-    //     .expect("could not send message on WINEVENT_CALLBACK_CHANNEL");
 }
 
 
@@ -342,17 +326,20 @@ impl WinEvent {
 
 #[cfg(test)]
 mod tests {
-    use crate::win2::{window::*, window_event::{WinEventType, WinEvent}};
+    use std::{thread, time::Duration};
+
+    use crate::win2::{window::*, window_event::{WinEventType, WinEvent}, message_loop::MessageLoop};
 
     #[test]
     fn test_init_hook() {
         assert_eq!(1, 1);
 
         let child = Window::from_name(None, "MINGW64:/d/Zoe").unwrap();
-        let _ = Window::from_name(None, "MINGW64:/c/Users/Zoe").unwrap()
+
         // let _ = Window::default() // for all windows
-            .listen()
-            .on(WinEventType::MoveResizeStart, |evt: &WinEvent| {
+        let mut listener = Window::from_name(None, "MINGW64:/c/Users/Zoe").unwrap().listen();
+        
+        let _ = listener.on(WinEventType::MoveResizeStart, |evt: &WinEvent| {
                 println!("===> object move start {}!", evt.window);
             })
             .on(WinEventType::MoveResizeEnd, move |evt: &WinEvent| {
@@ -361,11 +348,9 @@ mod tests {
                 if let Ok(rect) = evt.window.rect() {
                     child.set_pos(rect.right_top())
                 }
-            })
-            .start(true);
+            }).start(true);
 
-        // listen all windows
-
-        // clean all hooks
+        // 需要在同一个线程?
+        // MessageLoop::start(10, |_| { true })
     }
 }
