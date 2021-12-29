@@ -196,9 +196,11 @@ impl WinEventListener {
         } else {
             // store the thread handle
             self.thread = Some(thread::spawn(move || {
-                while !_exited.load(Ordering::SeqCst) {
+                MessageLoop::start(10, |_msg| {
                     process();
-                }
+    
+                    true
+                });
             }));
         }
 
@@ -348,9 +350,11 @@ mod tests {
                 if let Ok(rect) = evt.window.rect() {
                     child.set_pos(rect.right_top())
                 }
-            }).start(true);
+            }).start(false);
 
-        // 需要在同一个线程?
-        // MessageLoop::start(10, |_| { true })
+        // 是否能够将代码放到静态的hook函数中去
+
+        // 不同线程有问题!!!
+        MessageLoop::start(10, |_| { true })
     }
 }
