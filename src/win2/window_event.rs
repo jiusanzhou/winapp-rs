@@ -371,13 +371,25 @@ mod tests {
         // if evt.window.class() == "WeChatMainWndForPC" {
         let _ = lis
             .on(WinEventType::Create, move |evt: &WinEvent| {
-                if evt.window.is_valide() {
-                    if let Some(title) = evt.window.title() {
-                        if title == "微信" {
-                            println!("object create {} {} {}", evt.window, evt.raw_id_child, evt.raw_id_object);
-                        }
+                if !evt.window.is_valide() || evt.raw_id_object != 0 {
+                    return
+                }
+                let title = evt.window.title();
+                let class = evt.window.class();
+
+                // check is weixin main window
+                if title.is_some() && title.unwrap() == "微信" && class.is_ok() {
+                    match class.unwrap().as_str() {
+                        "WeChatLoginWndForPC" => {
+                            println!("启动了新微信");
+                        },
+                        "WeChatMainWndForPC" => {
+                            println!("微信登录成功");
+                        },
+                        _ => {}
                     }
                 }
+                
             })
             .start(false);
 

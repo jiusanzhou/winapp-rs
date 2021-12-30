@@ -257,6 +257,7 @@ mod tests {
     fn test_demo() {
         let child = Window::from_name(None, "MINGW64:/d/Zoe").unwrap();
         let target = Window::from_name(None, "MINGW64:/c/Users/Zoe").unwrap();
+        let target = Window::from_name(Some("WeChatMainWndForPC"), "微信").unwrap(); 
 
         let _ = child.attach_to(target)
             .match_size(true)
