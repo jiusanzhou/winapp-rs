@@ -238,7 +238,10 @@ unsafe extern "system" fn thunk(
     _dwms_event_time: u32,
 ) {
     // create the event, add more id fields
-    let evt = WinEvent::new(hook_handle, event, hwnd);
+    let mut evt = WinEvent::new(hook_handle, event, hwnd);
+    evt.raw_id_child = _id_child;
+    evt.raw_id_object = _id_object;
+    evt.raw_id_thread = _id_event_thread;
 
     // TODO: add filter at here ingore windows not match???
 
@@ -271,6 +274,7 @@ pub enum WinEventType {
     FocusChange,
     MoveResizeStart,
     MoveResizeEnd,
+    LocationChange,
 
     Unknown,
     All,
@@ -296,6 +300,8 @@ impl From<u32> for WinEventType {
 
             EVENT_SYSTEM_MOVESIZESTART => Self::MoveResizeStart,
             EVENT_SYSTEM_MOVESIZEEND => Self::MoveResizeEnd,
+
+            EVENT_OBJECT_LOCATIONCHANGE => Self::LocationChange,
             
             _ => Self::Unknown,
         }
@@ -310,6 +316,9 @@ pub struct WinEvent {
     // original data
     pub hook_handle: HWINEVENTHOOK,
     pub raw_event: u32,
+    pub raw_id_child: i32,
+    pub raw_id_object: i32,
+    pub raw_id_thread: u32,
 }
 
 impl WinEvent {
@@ -322,13 +331,15 @@ impl WinEvent {
 
             hook_handle,
             raw_event: event,
+            raw_id_child: 0,
+            raw_id_object: 0,
+            raw_id_thread: 0,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{thread, time::Duration};
 
     use crate::win2::{window::*, window_event::{WinEventType, WinEvent}, message_loop::MessageLoop};
 
@@ -343,8 +354,10 @@ mod tests {
         let _ = listener.on(WinEventType::MoveResizeStart, |evt: &WinEvent| {
                 println!("===> object move start {}!", evt.window);
             })
+            .on(WinEventType::LocationChange, |evt: &WinEvent| {
+                println!("===> object location change {}!", evt.window);
+            })
             .on(WinEventType::MoveResizeEnd, move |evt: &WinEvent| {
-                println!("===> object move end {}!", evt.window);
                 // get the position and set to the child one
                 if let Ok(rect) = evt.window.rect() {
                     child.set_pos(rect.right_top())

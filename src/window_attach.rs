@@ -191,7 +191,9 @@ impl WindowAttach {
         let update_rect = move || {
             // get the rect of target
             let target_rect = _target.rect().unwrap();
+
             let mut current_rect =  _window.rect().unwrap();
+            let old = current_rect;
             // resize self, this must be first!
             // postion needs size
             if _match_size {
@@ -208,9 +210,12 @@ impl WindowAttach {
             let p = _dir.apply(current_rect, target_rect, _fix_pos);
             current_rect.x = p.0;
             current_rect.y = p.1;
-            // update 
-            _window.set_rect(&current_rect, false);
-            println!("change rect {}", current_rect);
+            if !old.eq(&current_rect) {
+                // update 
+                println!("change rect {}", current_rect);
+                _window.set_rect(&current_rect, false);
+            }
+            println!("same one");
         };
 
         // init udpate
@@ -219,6 +224,11 @@ impl WindowAttach {
         // start the event hook
         let mut listener = self.target.listen();
         let _ = listener
+            .on(WinEventType::LocationChange, move |evt: &WinEvent| {
+                // TODO: too many events
+                println!("evt.obejct {}, evt.child {}", evt.raw_id_object, evt.raw_id_child);
+                if 0 == evt.raw_id_object { update_rect(); }
+            })
             .on(WinEventType::MoveResizeEnd, move |evt: &WinEvent| {
                 // reset size and pos
                 // get the old place???
@@ -240,7 +250,7 @@ impl Drop for WindowAttach {
 mod tests {
     use crate::win2::window::Window;
 
-    use super::{WindowAttach, AttachDirection};
+    use super::{AttachDirection};
 
 
     #[test]
