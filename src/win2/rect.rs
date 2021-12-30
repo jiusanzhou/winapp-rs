@@ -72,3 +72,9 @@ impl From<RECT> for Rect {
         }
     }
 }
+
+impl Default for Rect {
+    fn default() -> Self {
+        Rect::zero()
+    }
+}

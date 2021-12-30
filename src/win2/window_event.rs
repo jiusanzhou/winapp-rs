@@ -340,7 +340,6 @@ mod tests {
 
         // let _ = Window::default() // for all windows
         let mut listener = Window::from_name(None, "MINGW64:/c/Users/Zoe").unwrap().listen();
-        
         let _ = listener.on(WinEventType::MoveResizeStart, |evt: &WinEvent| {
                 println!("===> object move start {}!", evt.window);
             })

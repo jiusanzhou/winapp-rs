@@ -3,6 +3,8 @@
 
 // can we works in windows 7?
 
+#[warn(dead_code)]
+
 enum SplashType {
     Loading,
 }
