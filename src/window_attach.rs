@@ -219,6 +219,7 @@ impl WindowAttach {
         };
 
         // init udpate
+        _window.show();
         update_rect();
 
         // start the event hook
@@ -233,6 +234,17 @@ impl WindowAttach {
                 // reset size and pos
                 // get the old place???
                 update_rect();
+            })
+            .on(WinEventType::Show, move |evt: &WinEvent| {
+                if 0 == evt.raw_id_object {
+                    println!("window show");
+                    _window.show();
+                }
+            })
+            .on(WinEventType::Hide, move |evt: &WinEvent| {
+                if 0 == evt.raw_id_object {
+                    _window.hidden();
+                }
             })
             .start(true);
 
@@ -261,10 +273,10 @@ mod tests {
 
         let _ = child.attach_to(target)
             .match_size(true)
-            .dir(AttachDirection::LeftBottom)
+            .dir(AttachDirection::RightTop)
             .match_size_min(200)
             .match_size_max(800)
-            .fix_pos((0, 0))
+            .fix_pos((-10, 0))
             .start();
     }
 }
