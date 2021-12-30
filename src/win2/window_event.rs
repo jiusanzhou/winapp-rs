@@ -13,7 +13,7 @@ use bindings::Windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW,
     PM_REMOVE,
     EVENT_MAX, EVENT_MIN, EVENT_OBJECT_CLOAKED, EVENT_OBJECT_DESTROY, EVENT_OBJECT_FOCUS, EVENT_OBJECT_HIDE, EVENT_OBJECT_SHOW, EVENT_OBJECT_UNCLOAKED, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
-    MSG, PeekMessageW, TranslateMessage};
+    MSG, PeekMessageW, TranslateMessage, EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_CREATE};
 
 use crate::win2::message_loop::MessageLoop;
 
@@ -269,6 +269,7 @@ unsafe extern "system" fn thunk(
 #[derive(Clone, Copy, Debug, PartialEq, Hash, Eq)]
 pub enum WinEventType {
     Destroy,
+    Create,
     Show,
     Hide,
     FocusChange,
@@ -286,6 +287,7 @@ impl From<u32> for WinEventType {
         // new evt type from event id
         match event {
             EVENT_OBJECT_DESTROY => Self::Destroy,
+            EVENT_OBJECT_CREATE => Self::Create,
 
             EVENT_OBJECT_CLOAKED
             | EVENT_OBJECT_HIDE
@@ -351,7 +353,8 @@ mod tests {
 
         // let _ = Window::default() // for all windows
         let mut listener = Window::from_name(None, "MINGW64:/c/Users/Zoe").unwrap().listen();
-        let _ = listener.on(WinEventType::MoveResizeStart, |evt: &WinEvent| {
+        let _ = listener
+            .on(WinEventType::MoveResizeStart, |evt: &WinEvent| {
                 println!("===> object move start {}!", evt.window);
             })
             .on(WinEventType::LocationChange, |evt: &WinEvent| {
@@ -363,6 +366,20 @@ mod tests {
                     child.set_pos(rect.right_top())
                 }
             }).start(false);
+
+        let mut lis = Window::default().listen();
+        // if evt.window.class() == "WeChatMainWndForPC" {
+        let _ = lis
+            .on(WinEventType::Create, move |evt: &WinEvent| {
+                if evt.window.is_valide() {
+                    if let Some(title) = evt.window.title() {
+                        if title == "微信" {
+                            println!("object create {} {} {}", evt.window, evt.raw_id_child, evt.raw_id_object);
+                        }
+                    }
+                }
+            })
+            .start(false);
 
         // 是否能够将代码放到静态的hook函数中去
 

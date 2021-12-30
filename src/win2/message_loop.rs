@@ -37,7 +37,7 @@ impl MessageLoop {
                 }
             }
 
-            thread::sleep(Duration::from_millis(sleep));
+            // thread::sleep(Duration::from_millis(sleep));
 
             if !cb(value) {
                 break;
